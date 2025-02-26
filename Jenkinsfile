@@ -5,6 +5,14 @@ pipeline {
         DEV_REPO = "prabakaran90/devops-app-dev"
         PROD_REPO = "prabakaran90/devops-app-prod"
         IMAGE_TAG = "latest"
+
+        // AWS Configuration
+        AWS_REGION = "ap-south-1"
+        AMI_ID = "ami-00bb6a80f01f03502"  // Replace with a valid AMI ID
+        INSTANCE_TYPE = "t2.micro"
+        KEY_NAME = "spkey1"
+        SECURITY_GROUP = "guvi-project01-sg"  // Replace with your security group ID
+        SUBNET_ID = "subnet-01764d41845dfeaa2"  // Replace with your subnet ID
     }
 
     stages {
@@ -12,7 +20,7 @@ pipeline {
             steps {
                 script {
                     echo "Triggered by GitHub Webhook: Branch = ${env.BRANCH_NAME}"
-                    git branch: env.BRANCH_NAME, url: 'https://github.com/psivasankaran1/devops-deployment.git'
+                    git branch: env.BRANCH_NAME, url: 'https://github.com/psivasankaran1/Guvi-project1.git'
                 }
             }
         }
@@ -21,12 +29,9 @@ pipeline {
             steps {
                 script {
                     def IMAGE_NAME = "${DEV_REPO}:${IMAGE_TAG}"
-
                     if (env.BRANCH_NAME == "master") {
-                        echo "Merging dev into master - Using prod repo"
                         IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
                     }
-
                     echo "Building Docker Image: $IMAGE_NAME"
                     sh "docker build -t $IMAGE_NAME ."
                 }
@@ -37,9 +42,7 @@ pipeline {
             steps {
                 script {
                     def IMAGE_NAME = "${DEV_REPO}:${IMAGE_TAG}"
-
                     if (env.BRANCH_NAME == "master") {
-                        echo "Pushing to production repo"
                         IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
                     }
 
@@ -51,12 +54,56 @@ pipeline {
             }
         }
 
-        stage('Deploy Application') {
+        stage('Create EC2 Instance') {
             steps {
                 script {
-                    def DEPLOY_ENV = (env.BRANCH_NAME == "master") ? "prod" : "dev"
-                    echo "Deploying ${DEPLOY_ENV} environment..."
-                    sh "./deploy.sh ${DEPLOY_ENV}"
+                    echo "Creating EC2 instance..."
+                    sh """
+                        INSTANCE_ID=\$(aws ec2 run-instances \
+                            --image-id $AMI_ID \
+                            --instance-type $INSTANCE_TYPE \
+                            --key-name $KEY_NAME \
+                            --security-group-ids $SECURITY_GROUP \
+                            --subnet-id $SUBNET_ID \
+                            --count 1 \
+                            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=jenkins-deployed-instance}]' \
+                            --query 'Instances[0].InstanceId' --output text)
+                        echo \$INSTANCE_ID > instance_id.txt
+                    """
+                }
+            }
+        }
+
+        stage('Get EC2 Public IP') {
+            steps {
+                script {
+                    def INSTANCE_ID = sh(script: "cat instance_id.txt", returnStdout: true).trim()
+                    sh """
+                        PUBLIC_IP=\$(aws ec2 describe-instances \
+                            --instance-ids $INSTANCE_ID \
+                            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+                            --output text)
+                        echo \$PUBLIC_IP > public_ip.txt
+                    """
+                }
+            }
+        }
+
+        stage('Deploy Application to EC2') {
+            steps {
+                script {
+                    def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
+                    def IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
+
+                    echo "Deploying Docker container to EC2 instance..."
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ec2-user@\$PUBLIC_IP <<EOF
+                            docker pull $IMAGE_NAME
+                            docker stop devops-app || true
+                            docker rm devops-app || true
+                            docker run -d --name devops-app -p 80:80 $IMAGE_NAME
+                        EOF
+                    """
                 }
             }
         }
