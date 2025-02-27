@@ -20,7 +20,7 @@ pipeline {
             steps {
                 script {
                     echo "🚀 Triggered by GitHub Webhook: Branch = ${env.BRANCH_NAME}"
-                    git branch: "${env.BRANCH_NAME}", url: 'https://github.com/psivasankaran1/Guvi-project1.git'
+                    git branch: "${env.BRANCH_NAME}", url: 'https://github.com/psivasankaran1/devops-deployment.git'
                 }
             }
         }
