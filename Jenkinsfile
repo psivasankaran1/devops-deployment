@@ -15,16 +15,18 @@ pipeline {
         SUBNET_ID = "subnet-01764d41845dfeaa2"  // Replace with your subnet ID
     }
 
-    stage('Clone Repository') {
-    steps {
-        script {
-            def BRANCH = env.BRANCH_NAME ?: 'dev' // Default to 'dev' if not detected
-            echo "🚀 Cloning repository: Branch = ${BRANCH}"
-            git branch: BRANCH, url: 'https://github.com/psivasankaran1/devops-deployment.git'
-               }
-         }
-    }
-      
+    stages {  // ✅ WRAPPING ALL STAGES INSIDE stages {} ✅
+        
+        stage('Clone Repository') {
+            steps {
+                script {
+                    def BRANCH = env.BRANCH_NAME ?: 'dev' // Default to 'dev' if not detected
+                    echo "🚀 Cloning repository: Branch = ${BRANCH}"
+                    git branch: BRANCH, url: 'https://github.com/psivasankaran1/devops-deployment.git'
+                }
+            }
+        }
+        
         stage('Build Docker Image') {
             steps {
                 script {
@@ -113,7 +115,7 @@ pipeline {
                 }
             }
         }
-    }
+    }  // ✅ Closing stages {} ✅
 
     post {
         success {
