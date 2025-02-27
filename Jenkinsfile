@@ -50,7 +50,7 @@ pipeline {
                         IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
                     }
 
-                    withDockerRegistry([credentialsId: 'docker-hub-credentials', url: '']) {
+                    withDockerRegistry([credentialsId: 'docker-hub-credentials', url: 'https://index.docker.io/v1/']) {
                         echo "📤 Pushing Docker Image: $IMAGE_NAME"
                         sh "docker push $IMAGE_NAME"
                     }
