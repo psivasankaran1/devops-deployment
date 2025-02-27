@@ -8,21 +8,21 @@ pipeline {
 
         // AWS Configuration
         AWS_REGION = "ap-south-1"
-        AMI_ID = "ami-00bb6a80f01f03502"  // Replace with a valid AMI ID
+        AMI_ID = "ami-00bb6a80f01f03502"
         INSTANCE_TYPE = "t2.micro"
         KEY_NAME = "spkey1"
-        SECURITY_GROUP = "guvi-project01-sg"  // Replace with your security group ID
-        SUBNET_ID = "subnet-01764d41845dfeaa2"  // Replace with your subnet ID
+        SECURITY_GROUP = "guvi-project01-sg"
+        SUBNET_ID = "subnet-01764d41845dfeaa2"
     }
 
-    stages {  // ✅ Added the missing stages block
-
+    stages {
         stage('Clone Repository') {
             steps {
                 script {
                     def BRANCH = env.BRANCH_NAME ?: env.GIT_BRANCH?.replace('origin/', '') ?: 'dev'
                     echo "🚀 Cloning repository: Branch = ${BRANCH}"
                     git credentialsId: 'github-credentials', branch: BRANCH, url: 'https://github.com/psivasankaran1/devops-deployment.git'
+                    env.CURRENT_BRANCH = BRANCH
                 }
             }
         }
@@ -30,9 +30,8 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    def BRANCH = env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'dev'
                     def IMAGE_NAME = "${DEV_REPO}:${IMAGE_TAG}"
-                    if (BRANCH == "master") {
+                    if (env.CURRENT_BRANCH == "master") {
                         IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
                     }
                     echo "🛠 Building Docker Image: $IMAGE_NAME"
@@ -44,9 +43,8 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    def BRANCH = env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'dev'
                     def IMAGE_NAME = "${DEV_REPO}:${IMAGE_TAG}"
-                    if (BRANCH == "master") {
+                    if (env.CURRENT_BRANCH == "master") {
                         IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
                     }
 
@@ -60,7 +58,7 @@ pipeline {
 
         stage('Deploy to AWS') {
             when {
-                branch 'master'
+                expression { env.CURRENT_BRANCH == 'master' }
             }
             steps {
                 script {
@@ -105,8 +103,7 @@ pipeline {
                 }
             }
         }
-
-    } // ✅ Closing `stages` block correctly
+    }
 
     post {
         success {
