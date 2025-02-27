@@ -34,8 +34,8 @@ pipeline {
                     if (env.CURRENT_BRANCH == "master") {
                         IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
                     }
-                    echo "🛠 Building Docker Image: $IMAGE_NAME"
-                    sh "docker build -t $IMAGE_NAME ."
+                    echo "🛠 Building Docker Image: ${IMAGE_NAME}"
+                    sh "docker build -t ${IMAGE_NAME} ."
                 }
             }
         }
@@ -49,8 +49,8 @@ pipeline {
                     }
 
                     withDockerRegistry([credentialsId: 'docker-hub-credentials', url: 'https://index.docker.io/v1/']) {
-                        echo "📤 Pushing Docker Image: $IMAGE_NAME"
-                        sh "docker push $IMAGE_NAME"
+                        echo "📤 Pushing Docker Image: ${IMAGE_NAME}"
+                        sh "docker push ${IMAGE_NAME}"
                     }
                 }
             }
@@ -68,42 +68,37 @@ pipeline {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-access-key-id']]) {
                         echo "🖥 Creating EC2 instance..."
                         sh """
-                            INSTANCE_ID=$(aws ec2 run-instances \
-                                --image-id $AMI_ID \
-                                --instance-type $INSTANCE_TYPE \
-                                --key-name $KEY_NAME \
-                                --security-group-ids $SECURITY_GROUP \
-                                --subnet-id $SUBNET_ID \
+                            INSTANCE_ID=\$(aws ec2 run-instances \
+                                --image-id ${AMI_ID} \
+                                --instance-type ${INSTANCE_TYPE} \
+                                --key-name ${KEY_NAME} \
+                                --security-group-ids ${SECURITY_GROUP} \
+                                --subnet-id ${SUBNET_ID} \
                                 --count 1 \
                                 --user-data file://deploy.sh \
                                 --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=jenkins-deployed-instance}]' \
                                 --query 'Instances[0].InstanceId' --output text)
-                            echo $INSTANCE_ID > instance_id.txt
+                            echo "\$INSTANCE_ID" > instance_id.txt
                         """
 
                         echo "🕒 Waiting for EC2 instance to be running..."
-                        sh "aws ec2 wait instance-running --instance-ids $(cat instance_id.txt)"
+                        sh "aws ec2 wait instance-running --instance-ids \$(cat instance_id.txt)"
 
                         echo "🌐 Getting EC2 Public IP..."
                         retry(3) {
                             sh """
-                                PUBLIC_IP=$(aws ec2 describe-instances \
-                                    --instance-ids $(cat instance_id.txt) \
-                                    --query 'Reservations[0].Instances[0].PublicIpAddress' \
+                                PUBLIC_IP=\$(aws ec2 describe-instances \
+                                    --instance-ids \$(cat instance_id.txt) \
+                                    --query 'Reservations[*].Instances[*].PublicIpAddress' \
                                     --output text 2> aws_error.log)
-                                echo "Public IP from AWS CLI: $PUBLIC_IP"
-                                echo $PUBLIC_IP > public_ip.txt
+                                echo "Public IP from AWS CLI: \$PUBLIC_IP"
+                                echo "\$PUBLIC_IP" > public_ip.txt
                                 cat aws_error.log
                             """
-                            def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
-                            if (!PUBLIC_IP) {
-                                sleep(10) // Wait for 10 seconds before retrying
-                                error "Public IP not assigned yet, retrying..."
-                            }
                         }
 
                         def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
-                        echo "Public IP: $PUBLIC_IP"
+                        echo "Public IP: ${PUBLIC_IP}"
                     }
                 }
             }
