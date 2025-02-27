@@ -64,6 +64,7 @@ pipeline {
                 script {
                     echo "🚀 Deploying to AWS (only for master branch)..."
 
+                    // AWS credentials setup
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-access-key-id']]) {
                         echo "🖥 Creating EC2 instance..."
                         sh """
@@ -79,7 +80,7 @@ pipeline {
                             echo \$INSTANCE_ID > instance_id.txt
                         """
 
-                        echo "📡 Getting EC2 Public IP..."
+                        echo "�� Getting EC2 Public IP..."
                         def INSTANCE_ID = sh(script: "cat instance_id.txt", returnStdout: true).trim()
                         sh """
                             PUBLIC_IP=\$(aws ec2 describe-instances \
@@ -89,18 +90,25 @@ pipeline {
                             echo \$PUBLIC_IP > public_ip.txt
                         """
 
-                        echo "🚀 Deploying Docker container to EC2 instance..."
+                        echo "Public IP: \$(cat public_ip.txt)"
                         def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
-                        def IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
 
-                        sh """
-                            ssh -o StrictHostKeyChecking=no ec2-user@\$PUBLIC_IP <<EOF
-                                docker pull $IMAGE_NAME
-                                docker stop devops-app || true
-                                docker rm devops-app || true
-                                docker run -d --name devops-app -p 80:80 $IMAGE_NAME
-                            EOF
-                        """
+                        // Check if the PUBLIC_IP is empty
+                        if (PUBLIC_IP) {
+                            echo "🚀 Deploying Docker container to EC2 instance with Public IP: $PUBLIC_IP"
+                            def IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
+
+                            sh """
+                                ssh -o StrictHostKeyChecking=no ec2-user@\$PUBLIC_IP <<EOF
+                                    docker pull $IMAGE_NAME
+                                    docker stop devops-app || true
+                                    docker rm devops-app || true
+                                    docker run -d --name devops-app -p 80:80 $IMAGE_NAME
+                                EOF
+                            """
+                        } else {
+                            error "❌ Public IP is not available. Deployment failed!"
+                        }
                     }
                 }
             }
