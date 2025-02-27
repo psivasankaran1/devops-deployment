@@ -21,7 +21,7 @@ pipeline {
             steps {
                 script {
                     def BRANCH = env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'dev'
-                    echo "🚀 Cloning repository: Branch = ${BRANCH}"
+                    echo "🚀 Cloning repository : Branch = ${BRANCH}"
                     git credentialsId: 'github-credentials', branch: BRANCH, url: 'https://github.com/psivasankaran1/devops-deployment.git'
                 }
             }
