@@ -13,6 +13,10 @@ pipeline {
         KEY_NAME = "spkey1"
         SECURITY_GROUP = "guvi-project01-sg"
         SUBNET_ID = "subnet-01764d41845dfeaa2"
+
+        // AWS Credentials (Set these environment variables)
+        AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
     }
 
     stages {
@@ -20,7 +24,7 @@ pipeline {
             steps {
                 script {
                     def BRANCH = env.BRANCH_NAME ?: env.GIT_BRANCH?.replace('origin/', '') ?: 'dev'
-                    echo "🚀 Cloning repository : Branch = ${BRANCH}"
+                    echo "🚀 Cloning repository: Branch = ${BRANCH}"
                     git credentialsId: 'github-credentials', branch: BRANCH, url: 'https://github.com/psivasankaran1/devops-deployment.git'
                     env.CURRENT_BRANCH = BRANCH
                 }
