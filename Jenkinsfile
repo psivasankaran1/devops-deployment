@@ -15,23 +15,23 @@ pipeline {
         SUBNET_ID = "subnet-01764d41845dfeaa2"  // Replace with your subnet ID
     }
 
-    stages {  // ✅ WRAPPING ALL STAGES INSIDE stages {} ✅
-        
+    stages {
         stage('Clone Repository') {
             steps {
                 script {
-                    def BRANCH = env.BRANCH_NAME ?: 'dev' // Default to 'dev' if not detected
-                    echo "🚀 Cloning repository: Branch = ${BRANCH}"
+                    def BRANCH = env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'dev' // Ensure correct branch detection
+                    echo "🚀 Cloning repository : Branch = ${BRANCH}"
                     git branch: BRANCH, url: 'https://github.com/psivasankaran1/devops-deployment.git'
                 }
             }
         }
-        
+
         stage('Build Docker Image') {
             steps {
                 script {
+                    def BRANCH = env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'dev'
                     def IMAGE_NAME = "${DEV_REPO}:${IMAGE_TAG}"
-                    if (env.BRANCH_NAME == "master") {
+                    if (BRANCH == "master") {
                         IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
                     }
                     echo "🛠 Building Docker Image: $IMAGE_NAME"
@@ -43,8 +43,9 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
+                    def BRANCH = env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'dev'
                     def IMAGE_NAME = "${DEV_REPO}:${IMAGE_TAG}"
-                    if (env.BRANCH_NAME == "master") {
+                    if (BRANCH == "master") {
                         IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
                     }
 
@@ -56,7 +57,6 @@ pipeline {
             }
         }
 
-        // Only deploy if on master branch
         stage('Deploy to AWS') {
             when {
                 branch 'master'
@@ -115,7 +115,7 @@ pipeline {
                 }
             }
         }
-    }  // ✅ Closing stages {} ✅
+    }
 
     post {
         success {
