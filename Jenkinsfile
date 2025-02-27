@@ -81,9 +81,7 @@ pipeline {
                         """
 
                         echo "🕒 Waiting for EC2 instance to be running..."
-                        sh """
-                            aws ec2 wait instance-running --instance-ids \$(cat instance_id.txt)
-                        """
+                        sh "aws ec2 wait instance-running --instance-ids \$(cat instance_id.txt)"
 
                         echo "🌐 Getting EC2 Public IP..."
                         retry(3) {
@@ -110,14 +108,17 @@ pipeline {
                             echo "🚀 Deploying Docker container to EC2 instance with Public IP: $PUBLIC_IP"
                             def IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
 
-                            sh """
-                                ssh -o StrictHostKeyChecking=no ec2-user@$PUBLIC_IP <<EOF
-                                    docker pull $IMAGE_NAME
-                                    docker stop devops-app || true
-                                    docker rm devops-app || true
-                                    docker run -d --name devops-app -p 80:80 $IMAGE_NAME
-                                EOF
-                            """
+                            // 🔥 Corrected SSH Deployment with Jenkins Credentials 🔥
+                            withCredentials([sshUserPrivateKey(credentialsId: 'aws-ssh-key', keyFileVariable: 'SSH_KEY')]) {
+                                sh """
+                                    ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ec2-user@${PUBLIC_IP} <<EOF
+                                        docker pull $IMAGE_NAME
+                                        docker stop devops-app || true
+                                        docker rm devops-app || true
+                                        docker run -d --name devops-app -p 80:80 $IMAGE_NAME
+                                    EOF
+                                """
+                            }
                         } else {
                             error "❌ Public IP is not available. Deployment failed!"
                         }
