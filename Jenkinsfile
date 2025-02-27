@@ -30,7 +30,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    def BRANCH = env.BRANCH_NAME ?: 'dev'
+                    def BRANCH = 'master'
                     def IMAGE_NAME = (BRANCH == "master") ? "${PROD_REPO}:${IMAGE_TAG}" : "${DEV_REPO}:${IMAGE_TAG}"
                     
                     echo "🛠 Building Docker Image: $IMAGE_NAME"
@@ -42,7 +42,8 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    def BRANCH = env.BRANCH_NAME ?: 'dev'
+                    def BRANCH = 'master'
+                    //def BRANCH = env.BRANCH_NAME ?: 'dev'
                     def IMAGE_NAME = (BRANCH == "master") ? "${PROD_REPO}:${IMAGE_TAG}" : "${DEV_REPO}:${IMAGE_TAG}"
 
                     withDockerRegistry([credentialsId: 'docker-hub-credentials', url: 'https://index.docker.io/v1/']) {
