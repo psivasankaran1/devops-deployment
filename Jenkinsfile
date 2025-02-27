@@ -8,19 +8,20 @@ pipeline {
 
         // AWS Configuration
         AWS_REGION = "ap-south-1"
-        AMI_ID = "ami-00bb6a80f01f03502"
+        AMI_ID = "ami-00bb6a80f01f03502"  // Replace with a valid AMI ID
         INSTANCE_TYPE = "t2.micro"
         KEY_NAME = "spkey1"
-        SECURITY_GROUP = "guvi-project01-sg"
-        SUBNET_ID = "subnet-01764d41845dfeaa2"
+        SECURITY_GROUP = "guvi-project01-sg"  // Replace with your security group ID
+        SUBNET_ID = "subnet-01764d41845dfeaa2"  // Replace with your subnet ID
     }
 
-    stages {
+    stages {  // ✅ Added the missing stages block
+
         stage('Clone Repository') {
             steps {
                 script {
-                    def BRANCH = env.BRANCH_NAME ?: 'dev'
-                    echo "🚀 Cloning repository: Branch = ${BRANCH}"
+                    def BRANCH = env.BRANCH_NAME ?: env.GIT_BRANCH?.replace('origin/', '') ?: 'dev'
+                    echo "🚀 Cloning repository : Branch = ${BRANCH}"
                     git credentialsId: 'github-credentials', branch: BRANCH, url: 'https://github.com/psivasankaran1/devops-deployment.git'
                 }
             }
@@ -29,9 +30,11 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    def BRANCH = env.BRANCH_NAME ?: 'dev'
-                    def IMAGE_NAME = (BRANCH == "master") ? "${PROD_REPO}:${IMAGE_TAG}" : "${DEV_REPO}:${IMAGE_TAG}"
-                    
+                    def BRANCH = env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'dev'
+                    def IMAGE_NAME = "${DEV_REPO}:${IMAGE_TAG}"
+                    if (BRANCH == "master") {
+                        IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
+                    }
                     echo "🛠 Building Docker Image: $IMAGE_NAME"
                     sh "docker build -t $IMAGE_NAME ."
                 }
@@ -41,8 +44,11 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    def BRANCH = env.BRANCH_NAME ?: 'dev'
-                    def IMAGE_NAME = (BRANCH == "master") ? "${PROD_REPO}:${IMAGE_TAG}" : "${DEV_REPO}:${IMAGE_TAG}"
+                    def BRANCH = env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'dev'
+                    def IMAGE_NAME = "${DEV_REPO}:${IMAGE_TAG}"
+                    if (BRANCH == "master") {
+                        IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
+                    }
 
                     withDockerRegistry([credentialsId: 'docker-hub-credentials', url: 'https://index.docker.io/v1/']) {
                         echo "📤 Pushing Docker Image: $IMAGE_NAME"
@@ -60,30 +66,36 @@ pipeline {
                 script {
                     echo "🚀 Deploying to AWS (only for master branch)..."
 
-                    // Create EC2 instance and get instance ID
-                    def INSTANCE_ID = sh(script: """
-                        aws ec2 run-instances --image-id $AMI_ID --instance-type $INSTANCE_TYPE \
-                        --key-name $KEY_NAME --security-group-ids $SECURITY_GROUP --subnet-id $SUBNET_ID \
-                        --count 1 --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=jenkins-deployed-instance}]' \
-                        --query 'Instances[0].InstanceId' --output text
-                    """, returnStdout: true).trim()
-                    
-                    echo "�� EC2 Instance Created: $INSTANCE_ID"
-
-                    // Get Public IP of the EC2 instance
-                    sleep(10)  // Give some time for AWS to initialize
-                    def PUBLIC_IP = sh(script: """
-                        aws ec2 describe-instances --instance-ids $INSTANCE_ID \
-                        --query 'Reservations[0].Instances[0].PublicIpAddress' --output text
-                    """, returnStdout: true).trim()
-                    
-                    echo "📡 EC2 Public IP: $PUBLIC_IP"
-
-                    // Deploy Docker container to the EC2 instance
-                    def IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
+                    echo "🖥 Creating EC2 instance..."
                     sh """
-                        ssh -o StrictHostKeyChecking=no ec2-user@${PUBLIC_IP} <<EOF
-                            docker login -u your-dockerhub-username -p your-dockerhub-password
+                        INSTANCE_ID=\$(aws ec2 run-instances \
+                            --image-id $AMI_ID \
+                            --instance-type $INSTANCE_TYPE \
+                            --key-name $KEY_NAME \
+                            --security-group-ids $SECURITY_GROUP \
+                            --subnet-id $SUBNET_ID \
+                            --count 1 \
+                            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=jenkins-deployed-instance}]' \
+                            --query 'Instances[0].InstanceId' --output text)
+                        echo \$INSTANCE_ID > instance_id.txt
+                    """
+
+                    echo "📡 Getting EC2 Public IP..."
+                    def INSTANCE_ID = sh(script: "cat instance_id.txt", returnStdout: true).trim()
+                    sh """
+                        PUBLIC_IP=\$(aws ec2 describe-instances \
+                            --instance-ids $INSTANCE_ID \
+                            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+                            --output text)
+                        echo \$PUBLIC_IP > public_ip.txt
+                    """
+
+                    echo "🚀 Deploying Docker container to EC2 instance..."
+                    def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
+                    def IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
+
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ec2-user@\$PUBLIC_IP <<EOF
                             docker pull $IMAGE_NAME
                             docker stop devops-app || true
                             docker rm devops-app || true
@@ -93,7 +105,8 @@ pipeline {
                 }
             }
         }
-    }
+
+    } // ✅ Closing `stages` block correctly
 
     post {
         success {
