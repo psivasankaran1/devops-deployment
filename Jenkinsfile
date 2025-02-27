@@ -68,30 +68,31 @@ pipeline {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-access-key-id']]) {
                         echo "🖥 Creating EC2 instance..."
                         sh """
-                            INSTANCE_ID=\$(aws ec2 run-instances \
+                            INSTANCE_ID=$(aws ec2 run-instances \
                                 --image-id $AMI_ID \
                                 --instance-type $INSTANCE_TYPE \
                                 --key-name $KEY_NAME \
                                 --security-group-ids $SECURITY_GROUP \
                                 --subnet-id $SUBNET_ID \
                                 --count 1 \
+                                --user-data file://deploy.sh \
                                 --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=jenkins-deployed-instance}]' \
                                 --query 'Instances[0].InstanceId' --output text)
-                            echo \$INSTANCE_ID > instance_id.txt
+                            echo $INSTANCE_ID > instance_id.txt
                         """
 
                         echo "🕒 Waiting for EC2 instance to be running..."
-                        sh "aws ec2 wait instance-running --instance-ids \$(cat instance_id.txt)"
+                        sh "aws ec2 wait instance-running --instance-ids $(cat instance_id.txt)"
 
                         echo "🌐 Getting EC2 Public IP..."
                         retry(3) {
                             sh """
-                                PUBLIC_IP=\$(aws ec2 describe-instances \
-                                    --instance-ids \$(cat instance_id.txt) \
+                                PUBLIC_IP=$(aws ec2 describe-instances \
+                                    --instance-ids $(cat instance_id.txt) \
                                     --query 'Reservations[0].Instances[0].PublicIpAddress' \
                                     --output text 2> aws_error.log)
-                                echo "Public IP from AWS CLI: \$PUBLIC_IP"
-                                echo \$PUBLIC_IP > public_ip.txt
+                                echo "Public IP from AWS CLI: $PUBLIC_IP"
+                                echo $PUBLIC_IP > public_ip.txt
                                 cat aws_error.log
                             """
                             def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
@@ -103,25 +104,6 @@ pipeline {
 
                         def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
                         echo "Public IP: $PUBLIC_IP"
-
-                        if (PUBLIC_IP) {
-                            echo "🚀 Deploying Docker container to EC2 instance with Public IP: $PUBLIC_IP"
-                            def IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
-
-                            // 🔥 Corrected SSH Deployment with Jenkins Credentials 🔥
-                            withCredentials([sshUserPrivateKey(credentialsId: 'aws-ssh-key', keyFileVariable: 'SSH_KEY')]) {
-                                sh """
-                                    ssh -i \$SSH_KEY -o StrictHostKeyChecking=no ec2-user@${PUBLIC_IP} <<EOF
-                                        docker pull $IMAGE_NAME
-                                        docker stop devops-app || true
-                                        docker rm devops-app || true
-                                        docker run -d --name devops-app -p 80:80 $IMAGE_NAME
-                                    EOF
-                                """
-                            }
-                        } else {
-                            error "❌ Public IP is not available. Deployment failed!"
-                        }
                     }
                 }
             }
