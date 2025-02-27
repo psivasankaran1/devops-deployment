@@ -11,7 +11,7 @@ pipeline {
         AMI_ID = "ami-00bb6a80f01f03502"
         INSTANCE_TYPE = "t2.micro"
         KEY_NAME = "spkey1"
-        SECURITY_GROUP = "guvi-project01-sg"
+        SECURITY_GROUP = "sg-051078e33cc22ee9a"
         SUBNET_ID = "subnet-01764d41845dfeaa2"
     }
 
