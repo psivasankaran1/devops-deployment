@@ -13,10 +13,6 @@ pipeline {
         KEY_NAME = "spkey1"
         SECURITY_GROUP = "guvi-project01-sg"
         SUBNET_ID = "subnet-01764d41845dfeaa2"
-
-        // AWS Credentials (Set these environment variables)
-        AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
-        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
     }
 
     stages {
@@ -68,42 +64,44 @@ pipeline {
                 script {
                     echo "🚀 Deploying to AWS (only for master branch)..."
 
-                    echo "🖥 Creating EC2 instance..."
-                    sh """
-                        INSTANCE_ID=\$(aws ec2 run-instances \
-                            --image-id $AMI_ID \
-                            --instance-type $INSTANCE_TYPE \
-                            --key-name $KEY_NAME \
-                            --security-group-ids $SECURITY_GROUP \
-                            --subnet-id $SUBNET_ID \
-                            --count 1 \
-                            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=jenkins-deployed-instance}]' \
-                            --query 'Instances[0].InstanceId' --output text)
-                        echo \$INSTANCE_ID > instance_id.txt
-                    """
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-access-key-id']]) {
+                        echo "🖥 Creating EC2 instance..."
+                        sh """
+                            INSTANCE_ID=\$(aws ec2 run-instances \
+                                --image-id $AMI_ID \
+                                --instance-type $INSTANCE_TYPE \
+                                --key-name $KEY_NAME \
+                                --security-group-ids $SECURITY_GROUP \
+                                --subnet-id $SUBNET_ID \
+                                --count 1 \
+                                --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=jenkins-deployed-instance}]' \
+                                --query 'Instances[0].InstanceId' --output text)
+                            echo \$INSTANCE_ID > instance_id.txt
+                        """
 
-                    echo "📡 Getting EC2 Public IP..."
-                    def INSTANCE_ID = sh(script: "cat instance_id.txt", returnStdout: true).trim()
-                    sh """
-                        PUBLIC_IP=\$(aws ec2 describe-instances \
-                            --instance-ids $INSTANCE_ID \
-                            --query 'Reservations[0].Instances[0].PublicIpAddress' \
-                            --output text)
-                        echo \$PUBLIC_IP > public_ip.txt
-                    """
+                        echo "📡 Getting EC2 Public IP..."
+                        def INSTANCE_ID = sh(script: "cat instance_id.txt", returnStdout: true).trim()
+                        sh """
+                            PUBLIC_IP=\$(aws ec2 describe-instances \
+                                --instance-ids \$INSTANCE_ID \
+                                --query 'Reservations[0].Instances[0].PublicIpAddress' \
+                                --output text)
+                            echo \$PUBLIC_IP > public_ip.txt
+                        """
 
-                    echo "🚀 Deploying Docker container to EC2 instance..."
-                    def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
-                    def IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
+                        echo "🚀 Deploying Docker container to EC2 instance..."
+                        def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
+                        def IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
 
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ec2-user@\$PUBLIC_IP <<EOF
-                            docker pull $IMAGE_NAME
-                            docker stop devops-app || true
-                            docker rm devops-app || true
-                            docker run -d --name devops-app -p 80:80 $IMAGE_NAME
-                        EOF
-                    """
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ec2-user@\$PUBLIC_IP <<EOF
+                                docker pull $IMAGE_NAME
+                                docker stop devops-app || true
+                                docker rm devops-app || true
+                                docker run -d --name devops-app -p 80:80 $IMAGE_NAME
+                            EOF
+                        """
+                    }
                 }
             }
         }
