@@ -80,26 +80,38 @@ pipeline {
                             echo \$INSTANCE_ID > instance_id.txt
                         """
 
-                        echo "�� Getting EC2 Public IP..."
-                        def INSTANCE_ID = sh(script: "cat instance_id.txt", returnStdout: true).trim()
+                        echo "🕒 Waiting for EC2 instance to be running..."
                         sh """
-                            PUBLIC_IP=\$(aws ec2 describe-instances \
-                                --instance-ids \$INSTANCE_ID \
-                                --query 'Reservations[0].Instances[0].PublicIpAddress' \
-                                --output text)
-                            echo \$PUBLIC_IP > public_ip.txt
+                            aws ec2 wait instance-running --instance-ids \$(cat instance_id.txt)
                         """
 
-                        echo "Public IP: \$(cat public_ip.txt)"
-                        def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
+                        echo "🌐 Getting EC2 Public IP..."
+                        retry(3) {
+                            sh """
+                                PUBLIC_IP=\$(aws ec2 describe-instances \
+                                    --instance-ids \$(cat instance_id.txt) \
+                                    --query 'Reservations[0].Instances[0].PublicIpAddress' \
+                                    --output text 2> aws_error.log)
+                                echo "Public IP from AWS CLI: \$PUBLIC_IP"
+                                echo \$PUBLIC_IP > public_ip.txt
+                                cat aws_error.log
+                            """
+                            def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
+                            if (!PUBLIC_IP) {
+                                sleep(10) // Wait for 10 seconds before retrying
+                                error "Public IP not assigned yet, retrying..."
+                            }
+                        }
 
-                        // Check if the PUBLIC_IP is empty
+                        def PUBLIC_IP = sh(script: "cat public_ip.txt", returnStdout: true).trim()
+                        echo "Public IP: $PUBLIC_IP"
+
                         if (PUBLIC_IP) {
                             echo "🚀 Deploying Docker container to EC2 instance with Public IP: $PUBLIC_IP"
                             def IMAGE_NAME = "${PROD_REPO}:${IMAGE_TAG}"
 
                             sh """
-                                ssh -o StrictHostKeyChecking=no ec2-user@\$PUBLIC_IP <<EOF
+                                ssh -o StrictHostKeyChecking=no ec2-user@$PUBLIC_IP <<EOF
                                     docker pull $IMAGE_NAME
                                     docker stop devops-app || true
                                     docker rm devops-app || true
